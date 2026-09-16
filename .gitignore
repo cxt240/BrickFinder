@@ -1,24 +1,62 @@
+# Secrets (keep .env.example)
 .env
+.env.*
+!.env.example
+
+# Local sqlite, media, ingest status (keep directory placeholders)
 data/*
 !data/.gitkeep
 !data/db/
+data/db/*
 !data/db/.gitkeep
 *.db
 *.db-wal
 *.db-shm
+**/ingest_status.json
+
+# Instruction PDFs (keep Instructions/README.md)
+Instructions/**/*.pdf
+
+# Python
 **/__pycache__/
 **/*.py[cod]
 **/.venv/
+**/venv/
 **/.pytest_cache/
 **/.mypy_cache/
+**/.ruff_cache/
 *.egg-info/
-.DS_Store
-Thumbs.db
-web/ui/node_modules/
+.eggs/
+.coverage
+htmlcov/
+.tox/
+
+# Frontend
+**/node_modules/
 web/ui/dist/
+web/ui/build/
 web/ui/.vite/
-Instructions/**/*.pdf
+*.tsbuildinfo
+
+# Local inspect dumps (crops, masks, scratch scripts)
+**/_inspect/
+
+# Model weights / logs
 model-cache/
 *.log
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor
+*.swp
+*.swo
+*~
 .idea/
 .vscode/
+
+# Docker local leftovers
+docker-compose.override.yml
+*.pid

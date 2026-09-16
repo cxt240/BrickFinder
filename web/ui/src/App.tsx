@@ -12,7 +12,7 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <h1>BrickFinder</h1>
-          <p>Match a photo to the local instruction books. Venator first, more sets later.</p>
+          <p>Match a photo to a page in your indexed instruction books. Upload a file or use the camera.</p>
         </div>
         <nav className="nav">
           <NavLink to="/" end>
