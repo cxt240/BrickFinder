@@ -23,6 +23,16 @@ API groups (backend path → same path under `/api` on the BFF): **health** `/he
 
 `web/app/services/` is only `BackendClient`. The BFF has no sqlite.
 
+## Code layout
+
+One public class per file in `managers/`, `repositories/`, and `services/` (backend and BFF). Name the module after the class: `SearchManager` → `search_manager.py`. Do not add a second manager, repo, or service to an existing file for convenience.
+
+Package `__init__.py` files may re-export those classes. They must not contain implementations.
+
+Endpoints: one FastAPI router module per API group (`health.py`, `search.py`, `catalog.py`, `ingest.py`, `media.py`, `feedback.py`). Do not mix health into search or catalog. The BFF mirrors the same split under `web/app/endpoints/` and the same paths under `/api`.
+
+Small helper dataclasses (`RegionBox`, `EmbeddedView`, …) stay in the service file that owns them. A new embedding model (CLIP/DINOv2) is a **new class in a new file** behind the `EmbeddingService` interface, not a branch stuffed into `embedding_service.py`.
+
 ## Settings
 
 - `settings/config.py` — ports, paths, DPI, model name, weights. Defaults are fine for Compose.

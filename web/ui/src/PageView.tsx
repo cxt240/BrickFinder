@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type PageDetail } from "./api";
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
 
 export function PageView() {
   const { pageId } = useParams();
+  const navigate = useNavigate();
   const [page, setPage] = useState<PageDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,11 +39,29 @@ export function PageView() {
     };
   }, [pageId]);
 
+  const prevId = loading || !page ? null : page.prev_page_id;
+  const nextId = loading || !page ? null : page.next_page_id;
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (event.key === "ArrowLeft" && prevId != null) {
+        event.preventDefault();
+        navigate(`/pages/${prevId}`);
+        return;
+      }
+      if (event.key === "ArrowRight" && nextId != null) {
+        event.preventDefault();
+        navigate(`/pages/${nextId}`);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [navigate, prevId, nextId]);
+
   if (error) return <p className="error">{error}</p>;
   if (!page) return <p className="mono">Loading page…</p>;
-
-  const prevId = loading ? null : page.prev_page_id;
-  const nextId = loading ? null : page.next_page_id;
 
   return (
     <div className="grid">
