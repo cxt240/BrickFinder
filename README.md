@@ -95,3 +95,7 @@ Same paths on the backend without the `/api` prefix.
 | feedback | `POST /api/feedback` |
 
 Changing code? Start with [AGENTS.md](AGENTS.md).
+
+## License
+
+You may clone, run, and modify BrickFinder for noncommercial use. For-profit use is reserved to the creator. See [LICENSE](LICENSE) (PolyForm Noncommercial License 1.0.0).
