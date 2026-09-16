@@ -1,0 +1,60 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      BACKEND_PORT: ${BACKEND_PORT:-8080}
+      PYTHONUNBUFFERED: "1"
+      INSTRUCTIONS_PATH: ${INSTRUCTIONS_PATH:-/instructions}
+      DATA_PATH: ${DATA_PATH:-/data}
+      INGEST_DPI: ${INGEST_DPI:-150}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-histogram-hsv-256}
+      TOP_K: ${TOP_K:-12}
+      SEARCH_HIST_WEIGHT: ${SEARCH_HIST_WEIGHT:-0.72}
+      SEARCH_SILHOUETTE_WEIGHT: ${SEARCH_SILHOUETTE_WEIGHT:-0.28}
+      SEARCH_KIND_BOOST: ${SEARCH_KIND_BOOST:-0.03}
+      REBRICKABLE_API_KEY: ${REBRICKABLE_API_KEY:-}
+    env_file: .env
+    volumes:
+      # Host folder in this repo (gitignored). SQLite lives at ./data/db/brickfinder.db
+      - ./Instructions:/instructions:ro
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      WEB_PORT: ${WEB_PORT:-3000}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:8080}
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ingest:
+    profiles: ["ingest"]
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.ingest"]
+    environment:
+      INSTRUCTIONS_PATH: ${INSTRUCTIONS_PATH:-/instructions}
+      DATA_PATH: ${DATA_PATH:-/data}
+      INGEST_DPI: ${INGEST_DPI:-150}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-histogram-hsv-256}
+      PYTHONUNBUFFERED: "1"
+      REBRICKABLE_API_KEY: ${REBRICKABLE_API_KEY:-}
+    env_file: .env
+    volumes:
+      # Host folder in this repo (gitignored). SQLite lives at ./data/db/brickfinder.db
+      - ./Instructions:/instructions:ro
+      - ./data:/data
