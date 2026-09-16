@@ -36,14 +36,26 @@ export type PageSummary = {
   page_number: number;
   raster_path_url?: string;
   thumb_path_url?: string;
+  width?: number;
+  height?: number;
   step_number: number | null;
   bag_number: number | null;
+};
+
+export type PageCrop = {
+  id: number;
+  kind: string;
+  crop_path_url?: string;
+  bbox_x: number;
+  bbox_y: number;
+  bbox_w: number;
+  bbox_h: number;
 };
 
 export type PageDetail = PageSummary & {
   book_number: number;
   set_name: string;
-  crops?: { kind: string; crop_path_url?: string }[];
+  crops?: PageCrop[];
   prev_page_id: number | null;
   next_page_id: number | null;
 };
