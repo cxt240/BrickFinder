@@ -1,10 +1,20 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import Response
 
 from app.endpoints.deps import get_client
 from app.managers import SearchManager
 from app.services.backend_client import BackendClient
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+
+@router.post("/preview")
+async def preview(
+    image: UploadFile = File(...),
+    client: BackendClient = Depends(get_client),
+) -> Response:
+    body, content_type = await SearchManager(client).preview(image)
+    return Response(content=body, media_type=content_type)
 
 
 @router.post("")

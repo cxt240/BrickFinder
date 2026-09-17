@@ -4,7 +4,7 @@ SQLite file: `{DATA_PATH}/db/brickfinder.db` (Compose bind-mount: host `./data` 
 
 Paths stored on rows are relative to `DATA_PATH` (posix, no leading slash), e.g. `media/sets/1/books/2/pages/0042.jpg`.
 
-Vectors are **float32 little-endian blobs** on `embeddings.vector`. kNN is in-process (numpy). Layout is compatible with a later sqlite-vec virtual table keyed by the same `region_id` + `model_name`.
+Vectors are **float32 little-endian blobs** on `embeddings.vector`. kNN is in-process (numpy). Layout is compatible with a later sqlite-vec virtual table keyed by the same `region_id` + `model_name`. Default index is DINOv2-small (384-d). CLIP is search-time only and is not stored.
 
 ```mermaid
 erDiagram
@@ -87,7 +87,7 @@ Local catalog placeholders (`design_id` / `name`, `lego_id` / `name` / `hex`). U
 | --- | --- | --- |
 | id | INTEGER PK | |
 | region_id | FK regions | |
-| model_name | TEXT | v1: `histogram-hsv-256` |
+| model_name | TEXT | `dinov2-small` (default index) or `histogram-hsv-256`. CLIP (`clip-vit-b-32`) is not stored. |
 | vector | BLOB | float32, L2-normalized |
 | silhouette | BLOB | float32 32×32 mask, L2-normalized |
 

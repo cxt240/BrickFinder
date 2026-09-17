@@ -107,6 +107,16 @@ export const api = {
     if (kind) body.append("kind", kind);
     return fetch("/api/search", { method: "POST", body }).then((r) => parse<SearchResponse>(r));
   },
+  searchPreview: async (file: File) => {
+    const body = new FormData();
+    body.append("image", file);
+    const response = await fetch("/api/search/preview", { method: "POST", body });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || response.statusText);
+    }
+    return URL.createObjectURL(await response.blob());
+  },
   catalog: {
     sets: () => fetch("/api/sets").then((r) => parse<SetSummary[]>(r)),
     books: (setId?: number) => {

@@ -25,7 +25,11 @@ class MaskService:
         page_cut = max(12.0, min(28.0, float(np.percentile(dist, 18))))
         page_bg = dist < page_cut
         foreground = ~(near_white | page_bg)
-        return Image.fromarray((foreground.astype(np.uint8) * 255), mode="L")
+        mask = Image.fromarray((foreground.astype(np.uint8) * 255), mode="L")
+        # Drop 1–2px leader lines so an isolated sub-build is not glued to arrows.
+        mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(5))
+        cleaned = self._drop_instruction_clutter(np.asarray(mask) > 127)
+        return Image.fromarray((cleaned.astype(np.uint8) * 255), mode="L")
 
     def mask_photo(self, photo: Image.Image) -> Image.Image:
         rgb = np.asarray(photo.convert("RGB"), dtype=np.float32)
@@ -120,3 +124,17 @@ class MaskService:
         if float(primary.mean()) < 0.002:
             return foreground
         return primary
+
+    def _drop_instruction_clutter(self, foreground: np.ndarray) -> np.ndarray:
+        """Strip the instruction progress bar so tighten() hugs the bricks."""
+        height, width = foreground.shape
+        if height < 16 or width < 16 or not foreground.any():
+            return foreground
+        out = foreground.copy()
+        footer_h = max(3, height // 20)
+        footer = out[-footer_h:]
+        body = out[:-footer_h]
+        if footer.mean() > 0.22 and body.mean() < footer.mean() * 0.85:
+            if float((footer.mean(axis=0) > 0.35).mean()) > 0.45:
+                out[-footer_h:] = False
+        return out

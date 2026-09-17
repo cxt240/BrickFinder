@@ -2,13 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY pyproject.toml /app/pyproject.toml
+RUN mkdir -p /app/app && : > /app/app/__init__.py \
+    && pip install --no-cache-dir .
 COPY app /app/app
-RUN pip install --no-cache-dir .
 
 EXPOSE 8080
 

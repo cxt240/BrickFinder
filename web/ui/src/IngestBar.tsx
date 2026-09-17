@@ -11,7 +11,10 @@ export function IngestBar() {
     const tick = async () => {
       try {
         const next = await api.ingest.status();
-        if (!cancelled) setStatus(next);
+        if (!cancelled) {
+          setStatus(next);
+          setError(null);
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Status failed");
       }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import numpy as np
@@ -28,45 +29,67 @@ def cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
+def chroma_hue(vector: np.ndarray) -> np.ndarray:
+    """16-d hue profile of saturated pixels; ignores gray/white paper and tiles' noisy hue."""
+    arr = np.asarray(vector, dtype=np.float32).reshape(HIST_HUE_BINS, HIST_SAT_BINS, HIST_VAL_BINS)
+    chroma = arr[:, 2:, :].sum(axis=(1, 2))
+    norm = np.linalg.norm(chroma)
+    if norm > 0:
+        chroma = chroma / norm
+    return chroma
+
+
+def silhouette_iou(a: np.ndarray, b: np.ndarray) -> float:
+    """Binary overlap of 32x32 silhouettes; cosine alone treats any filled blob as similar."""
+    aa = np.asarray(a, dtype=np.float32).reshape(SILHOUETTE_SIZE, SILHOUETTE_SIZE)
+    bb = np.asarray(b, dtype=np.float32).reshape(SILHOUETTE_SIZE, SILHOUETTE_SIZE)
+    ta = 0.35 * float(aa.max()) if aa.size else 0.0
+    tb = 0.35 * float(bb.max()) if bb.size else 0.0
+    ma = aa > ta
+    mb = bb > tb
+    inter = float(np.logical_and(ma, mb).sum())
+    union = float(np.logical_or(ma, mb).sum())
+    return inter / union if union else 0.0
+
+
+def sat_mass(vector: np.ndarray) -> float:
+    """Share of hist energy that is not near-gray; lighting-invariant color amount."""
+    arr = np.asarray(vector, dtype=np.float32).reshape(HIST_HUE_BINS, HIST_SAT_BINS, HIST_VAL_BINS)
+    return float(arr[:, 1:, :].sum())
+
+
+def silhouette_aspect(sil: np.ndarray) -> float:
+    """Width/height of the 32x32 foreground; footer bars are extremely elongated."""
+    arr = np.asarray(sil, dtype=np.float32).reshape(SILHOUETTE_SIZE, SILHOUETTE_SIZE)
+    m = float(arr.max()) if arr.size else 0.0
+    if m <= 0:
+        return 1.0
+    ys, xs = np.where(arr > 0.35 * m)
+    if xs.size == 0:
+        return 1.0
+    bw = int(xs.max() - xs.min() + 1)
+    bh = int(ys.max() - ys.min() + 1)
+    return max(bw, bh) / max(1, min(bw, bh))
+
+
 @dataclass(frozen=True)
 class EmbeddedView:
     vector: bytes
     silhouette: bytes
 
 
-class EmbeddingService:
-    """v1: HSV histogram + 32x32 silhouette. Replace this class to swap in CLIP."""
+class EmbeddingService(ABC):
+    """Swap implementations by model_name. Histogram is v1; DINOv2 is a separate class."""
 
-    def __init__(self, model_name: str = "histogram-hsv-256") -> None:
-        self.model_name = model_name
+    model_name: str
+    uses_histogram: bool = False
 
+    @abstractmethod
     def embed(self, image: Image.Image, mask: Image.Image | None = None) -> EmbeddedView:
-        rgb = image.convert("RGB")
-        hsv = np.asarray(rgb.convert("HSV"), dtype=np.float32)
-        if mask is None:
-            weights = np.ones(hsv.shape[:2], dtype=np.float32)
-        else:
-            weights = np.asarray(mask.convert("L"), dtype=np.float32) / 255.0
-        vector = self._histogram(hsv, weights)
-        silhouette = self._silhouette(mask if mask is not None else Image.new("L", rgb.size, 255))
-        return EmbeddedView(vector=pack_f32(vector), silhouette=pack_f32(silhouette))
+        raise NotImplementedError
 
-    def _histogram(self, hsv: np.ndarray, weights: np.ndarray) -> np.ndarray:
-        hue = hsv[:, :, 0] / 255.0
-        sat = hsv[:, :, 1] / 255.0
-        val = hsv[:, :, 2] / 255.0
-        h_idx = np.clip((hue * HIST_HUE_BINS).astype(np.int32), 0, HIST_HUE_BINS - 1)
-        s_idx = np.clip((sat * HIST_SAT_BINS).astype(np.int32), 0, HIST_SAT_BINS - 1)
-        v_idx = np.clip((val * HIST_VAL_BINS).astype(np.int32), 0, HIST_VAL_BINS - 1)
-        flat = ((h_idx * HIST_SAT_BINS + s_idx) * HIST_VAL_BINS + v_idx).ravel()
-        # Saturated pixels (the red wedge, printed inks) outrank table/page gray.
-        sat_boost = 1.0 + 0.35 * sat
-        w = (weights * sat_boost).ravel()
-        hist = np.bincount(flat, weights=w, minlength=VECTOR_SIZE).astype(np.float32)
-        norm = np.linalg.norm(hist)
-        if norm > 0:
-            hist /= norm
-        return hist
+    def embed_many(self, items: list[tuple[Image.Image, Image.Image | None]]) -> list[EmbeddedView]:
+        return [self.embed(image, mask) for image, mask in items]
 
     def _silhouette(self, mask: Image.Image) -> np.ndarray:
         small = mask.convert("L").resize((SILHOUETTE_SIZE, SILHOUETTE_SIZE), Image.Resampling.BILINEAR)
@@ -76,3 +99,48 @@ class EmbeddingService:
         if norm > 0:
             flat /= norm
         return flat
+
+    def rotated_silhouettes(self, mask: Image.Image, steps: int = 16) -> list[np.ndarray]:
+        """Rotation-invariant silhouettes for phone photos vs isometric CGI."""
+        gray = mask.convert("L")
+        width, height = gray.size
+        side = max(width, height)
+        canvas = Image.new("L", (side, side), 0)
+        canvas.paste(gray, ((side - width) // 2, (side - height) // 2))
+        views = [self._silhouette(canvas)]
+        for step in range(1, steps):
+            rotated = canvas.rotate(step * (360.0 / steps), resample=Image.Resampling.BILINEAR, fillcolor=0)
+            views.append(self._silhouette(rotated))
+        return views
+
+
+_SERVICES: dict[str, EmbeddingService] = {}
+
+
+def create_embedding_service(model_name: str) -> EmbeddingService:
+    name = (model_name or "histogram-hsv-256").strip()
+    cached = _SERVICES.get(name)
+    if cached is not None:
+        return cached
+    from app.settings.config import get_config
+
+    config = get_config()
+    remote = bool(config.vision_url) and config.brickfinder_role != "vision"
+    if remote and not name.startswith("histogram"):
+        from app.services.remote_embedding_service import RemoteEmbeddingService
+
+        service: EmbeddingService = RemoteEmbeddingService(config.vision_url, name)
+    elif name.startswith("clip"):
+        from app.services.clip_embedding_service import ClipEmbeddingService
+
+        service = ClipEmbeddingService(name)
+    elif name.startswith("dinov2"):
+        from app.services.dinov2_embedding_service import Dinov2EmbeddingService
+
+        service = Dinov2EmbeddingService(name)
+    else:
+        from app.services.histogram_embedding_service import HistogramEmbeddingService
+
+        service = HistogramEmbeddingService(name)
+    _SERVICES[name] = service
+    return service

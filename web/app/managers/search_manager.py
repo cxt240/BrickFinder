@@ -12,3 +12,6 @@ class SearchManager:
         payload = await self.client.search(upload, kind, top_k)
         results = [with_media(hit, "raster_path", "thumb_path", "crop_path") for hit in payload.get("results") or []]
         return {"query_id": payload.get("query_id"), "kind": payload.get("kind"), "results": results}
+
+    async def preview(self, upload) -> tuple[bytes, str]:
+        return await self.client.search_preview(upload)

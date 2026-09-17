@@ -16,7 +16,7 @@ from app.repositories.embedding_repository import EmbeddingRepository
 from app.repositories.page_repository import PageRepository
 from app.repositories.region_repository import RegionRepository
 from app.repositories.set_repository import SetRepository
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import EmbeddingService, create_embedding_service
 from app.services.layout_service import LayoutService
 from app.services.mask_service import MaskService
 from app.services.ocr_service import OcrService
@@ -43,7 +43,7 @@ class IngestManager:
         self.ocr = ocr or OcrService()
         self.layout = layout or LayoutService()
         self.masks = masks or MaskService()
-        self.embeddings = embeddings or EmbeddingService(config.embedding_model)
+        self.embeddings = embeddings or create_embedding_service(config.embedding_model)
         self.status = status or StatusService(config.ingest_status_path)
         self.sets = SetRepository(session)
         self.books = BookRepository(session)
@@ -237,6 +237,24 @@ class IngestManager:
             )
         )
         try:
+            batch_items: list[tuple[int, Image.Image, Image.Image]] = []
+            batch_size = 16
+
+            def flush() -> None:
+                if not batch_items:
+                    return
+                views = self.embeddings.embed_many([(rgb, mask) for _, rgb, mask in batch_items])
+                for (region_id, rgb, mask), embedded in zip(batch_items, views):
+                    self.emb_repo.upsert(
+                        region_id,
+                        self.embeddings.model_name,
+                        embedded.vector,
+                        embedded.silhouette,
+                    )
+                    rgb.close()
+                    mask.close()
+                batch_items.clear()
+
             for index, region in enumerate(regions, start=1):
                 crop_path = self.config.data_path / region.crop_path
                 if not crop_path.is_file():
@@ -245,19 +263,22 @@ class IngestManager:
                 with Image.open(crop_path) as crop:
                     rgb = crop.convert("RGB")
                     mask = self.masks.mask_instruction(rgb)
-                    embedded = self._embed_crop(rgb, mask)
+                    tight_img, tight_mask = self.masks.tighten(rgb, mask, pad=12)
                     mask_path = self.config.data_path / region.mask_path
                     mask_path.parent.mkdir(parents=True, exist_ok=True)
                     mask.save(mask_path)
-                    self.emb_repo.upsert(
-                        region.id,
-                        self.embeddings.model_name,
-                        embedded.vector,
-                        embedded.silhouette,
-                    )
-                if index % 40 == 0:
+                    batch_items.append((region.id, tight_img.copy(), tight_mask.copy()))
+                    rgb.close()
+                    mask.close()
+                if len(batch_items) >= batch_size:
+                    flush()
                     self.session.commit()
-                    self.status.update(pages_done=index, pages_total=len(regions), message=f"Embedded region {region.id}")
+                    self.status.update(
+                        pages_done=index,
+                        pages_total=len(regions),
+                        message=f"Embedded region {region.id} ({self.embeddings.model_name})",
+                    )
+            flush()
             self.session.commit()
             return self.status.update(
                 state="complete",

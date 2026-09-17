@@ -1,5 +1,30 @@
 services:
+  vision:
+    image: brickfinder-vision
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.vision
+    environment:
+      BRICKFINDER_ROLE: vision
+      PYTHONUNBUFFERED: "1"
+      DATA_PATH: ${DATA_PATH:-/data}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-dinov2-small}
+      SEARCH_RERANK_MODEL: ${SEARCH_RERANK_MODEL:-clip-vit-b-32}
+      HF_HOME: /data/models/hf
+      TRANSFORMERS_CACHE: /data/models/hf
+    env_file: .env
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
+    restart: unless-stopped
+
   backend:
+    image: brickfinder-backend
     build:
       context: ./backend
     environment:
@@ -8,10 +33,14 @@ services:
       INSTRUCTIONS_PATH: ${INSTRUCTIONS_PATH:-/instructions}
       DATA_PATH: ${DATA_PATH:-/data}
       INGEST_DPI: ${INGEST_DPI:-150}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-histogram-hsv-256}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-dinov2-small}
+      SEARCH_RERANK_MODEL: ${SEARCH_RERANK_MODEL:-clip-vit-b-32}
+      SEARCH_RERANK_CANDIDATES: ${SEARCH_RERANK_CANDIDATES:-100}
+      VISION_URL: ${VISION_URL:-http://vision:8081}
       TOP_K: ${TOP_K:-12}
-      SEARCH_HIST_WEIGHT: ${SEARCH_HIST_WEIGHT:-0.72}
-      SEARCH_SILHOUETTE_WEIGHT: ${SEARCH_SILHOUETTE_WEIGHT:-0.28}
+      SEARCH_HIST_WEIGHT: ${SEARCH_HIST_WEIGHT:-0.55}
+      SEARCH_SILHOUETTE_WEIGHT: ${SEARCH_SILHOUETTE_WEIGHT:-0.45}
+      SEARCH_CHROMA_WEIGHT: ${SEARCH_CHROMA_WEIGHT:-0.0}
       SEARCH_KIND_BOOST: ${SEARCH_KIND_BOOST:-0.03}
       REBRICKABLE_API_KEY: ${REBRICKABLE_API_KEY:-}
     env_file: .env
@@ -19,12 +48,15 @@ services:
       # Host folder in this repo (gitignored). SQLite lives at ./data/db/brickfinder.db
       - ./Instructions:/instructions:ro
       - ./data:/data
+    depends_on:
+      vision:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 15s
+      start_period: 20s
     restart: unless-stopped
 
   web:
@@ -43,18 +75,37 @@ services:
 
   ingest:
     profiles: ["ingest"]
-    build:
-      context: ./backend
+    image: brickfinder-backend
     command: ["python", "-m", "app.ingest"]
     environment:
       INSTRUCTIONS_PATH: ${INSTRUCTIONS_PATH:-/instructions}
       DATA_PATH: ${DATA_PATH:-/data}
       INGEST_DPI: ${INGEST_DPI:-150}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-histogram-hsv-256}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-dinov2-small}
+      VISION_URL: ${VISION_URL:-http://vision:8081}
       PYTHONUNBUFFERED: "1"
       REBRICKABLE_API_KEY: ${REBRICKABLE_API_KEY:-}
     env_file: .env
     volumes:
-      # Host folder in this repo (gitignored). SQLite lives at ./data/db/brickfinder.db
       - ./Instructions:/instructions:ro
       - ./data:/data
+    depends_on:
+      vision:
+        condition: service_healthy
+
+  reindex:
+    profiles: ["reindex"]
+    image: brickfinder-backend
+    command: ["python", "-m", "app.reindex"]
+    environment:
+      DATA_PATH: ${DATA_PATH:-/data}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-dinov2-small}
+      VISION_URL: ${VISION_URL:-http://vision:8081}
+      PYTHONUNBUFFERED: "1"
+    env_file: .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      vision:
+        condition: service_healthy
+    restart: "no"

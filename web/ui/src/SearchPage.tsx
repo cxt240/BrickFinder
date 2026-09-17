@@ -49,6 +49,8 @@ export function SearchPage() {
         </div>
         {session.preview ? (
           <img className="preview" src={session.preview} alt="Query preview" />
+        ) : session.file ? (
+          <div className="drop">Decoding photo…</div>
         ) : session.fileName ? (
           <div className="drop">Last photo: {session.fileName}. Choose the file again only if you need a new search.</div>
         ) : (

@@ -43,6 +43,14 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    async def search_preview(self, upload: UploadFile) -> tuple[bytes, str]:
+        payload = await upload.read()
+        files = {"image": (upload.filename or "query.jpg", payload, upload.content_type or "image/jpeg")}
+        response = await self._client.post(f"{self.base_url}/search/preview", files=files)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "image/jpeg")
+        return response.content, content_type
+
     async def sets(self) -> list[dict]:
         response = await self._client.get(f"{self.base_url}/sets")
         response.raise_for_status()

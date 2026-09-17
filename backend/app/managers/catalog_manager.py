@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.models.schemas import BookOut, PageDetail, PageOut, SetOut
+from app.models.schemas import BookOut, PageDetail, PageOut, RegionCropOut, SetOut
 from app.repositories.book_repository import BookRepository
 from app.repositories.page_repository import PageRepository
 from app.repositories.set_repository import SetRepository
@@ -78,12 +78,16 @@ class CatalogManager:
         step = page.steps[0] if page.steps else None
         prev_page_id, next_page_id = self.pages.neighbor_ids(page.book_id, page.page_number)
         crops = [
-            {
-                "id": region.id,
-                "kind": region.kind,
-                "crop_path": region.crop_path,
-                "mask_path": region.mask_path,
-            }
+            RegionCropOut(
+                id=region.id,
+                kind=region.kind,
+                crop_path=region.crop_path,
+                mask_path=region.mask_path,
+                bbox_x=region.bbox_x,
+                bbox_y=region.bbox_y,
+                bbox_w=region.bbox_w,
+                bbox_h=region.bbox_h,
+            )
             for region in page.regions
         ]
         return PageDetail(

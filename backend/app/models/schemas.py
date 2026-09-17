@@ -77,10 +77,21 @@ class PageOut(BaseModel):
     bag_number: int | None = None
 
 
+class RegionCropOut(BaseModel):
+    id: int
+    kind: str
+    crop_path: str
+    mask_path: str
+    bbox_x: int
+    bbox_y: int
+    bbox_w: int
+    bbox_h: int
+
+
 class PageDetail(PageOut):
     set_name: str
     book_number: int
-    crops: list[dict] = Field(default_factory=list)
+    crops: list[RegionCropOut] = Field(default_factory=list)
     prev_page_id: int | None = None
     next_page_id: int | None = None
 
